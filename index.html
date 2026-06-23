@@ -970,45 +970,22 @@ let tvSym = 'SPY';
 let tvTF = '1';
 
 function buildTVWidget(sym, tf) {
-  if (!window.TradingView) {
-    loadTVScript(() => buildTVWidget(sym, tf));
-    return;
-  }
   const container = document.getElementById('tvChartContainer');
-  container.innerHTML = '';
-  const div = document.createElement('div');
-  div.id = 'tv_widget';
-  div.style.height = '400px';
-  container.appendChild(div);
-
-  new TradingView.widget({
-    container_id: 'tv_widget',
-    symbol: sym,
-    interval: tf,
-    timezone: 'America/New_York',
-    theme: 'dark',
-    style: '1',           // candlesticks
-    locale: 'en',
-    toolbar_bg: '#0a0f1a',
-    enable_publishing: false,
-    hide_top_toolbar: false,
-    hide_legend: false,
-    save_image: false,
-    backgroundColor: '#0a0f1a',
-    gridColor: '#1f2937',
-    studies: [
-      'VWAP@tv-basicstudies',
-      'Volume@tv-basicstudies',
-      'RSI@tv-basicstudies',
-    ],
-    width: '100%',
-    height: 400,
-    autosize: true,
-    withdateranges: false,
-    hide_side_toolbar: true,
-    allow_symbol_change: false,
-    show_popup_button: false,
-  });
+  // Map timeframe to TradingView interval param
+  const tfMap = {'1':'1','5':'5','15':'15','60':'60','D':'1D'};
+  const interval = tfMap[tf] || '1';
+  // Studies encoded for URL
+  const studies = 'VWAP%40tv-basicstudies%1FVolume%40tv-basicstudies%1FRSI%40tv-basicstudies';
+  const url = `https://s.tradingview.com/widgetembed/?frameElementId=tv_embed&symbol=${encodeURIComponent(sym)}&interval=${interval}&hidesidetoolbar=1&hidetoptoolbar=0&symboledit=0&saveimage=0&toolbarbg=0a0f1a&studies=${studies}&theme=dark&style=1&timezone=America%2FNew_York&withdateranges=0&showpopupbutton=0&locale=en`;
+  container.innerHTML = `<iframe
+    src="${url}"
+    id="tv_iframe"
+    style="width:100%;height:400px;border:none;border-radius:8px;"
+    allowtransparency="true"
+    frameborder="0"
+    scrolling="no"
+    allowfullscreen>
+  </iframe>`;
 }
 
 function switchTV(sym, btn) {
@@ -1025,41 +1002,13 @@ function switchTVTF(tf, btn) {
   buildTVWidget(tvSym, tvTF);
 }
 
-function loadTVScript(cb) {
-  if (window.TradingView) { cb(); return; }
-  // Check if script already loading
-  if (document.getElementById('tv-script')) {
-    const wait = setInterval(() => {
-      if (window.TradingView) { clearInterval(wait); cb(); }
-    }, 100);
-    return;
-  }
-  const s = document.createElement('script');
-  s.id = 'tv-script';
-  s.src = 'https://s3.tradingview.com/tv.js';
-  s.async = true;
-  s.onload = () => {
-    // Give TV a moment to initialize its namespace
-    setTimeout(cb, 200);
-  };
-  s.onerror = () => {
-    document.getElementById('tvChartContainer').innerHTML =
-      '<div style="display:flex;align-items:center;justify-content:center;height:400px;color:#6b7280;font-size:13px;flex-direction:column;gap:10px">' +
-      '<span>⚠️ TradingView failed to load</span>' +
-      '<a href="https://www.tradingview.com/chart/?symbol=SPY" target="_blank" style="color:#60a5fa;font-size:12px">Open TradingView in new tab →</a>' +
-      '</div>';
-  };
-  document.head.appendChild(s);
-}
+function loadTVScript(cb) { cb(); } // No longer needed - using iframe
 
 // ─── Init ────────────────────────────────────────────────────────
 loadKeys();
 loadPrices();
 loadNews();
-// Load TradingView after page fully ready
-window.addEventListener('load', () => {
-  loadTVScript(() => buildTVWidget('SPY', '1'));
-});
+window.addEventListener('load', () => buildTVWidget('SPY', '1'));
 loadEconomicCalendar();
 setInterval(loadPrices,60000);
 setInterval(loadNews,180000);
