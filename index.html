@@ -95,6 +95,20 @@ input{width:100%;background:#0a0f1a;border:1px solid #374151;border-radius:8px;c
 @keyframes fl{0%{background:#f9731633}100%{background:transparent}}
 .hint{color:#4b5563;font-size:11px;margin-top:4px}
 
+.chart-section{background:#111827;border-radius:12px;padding:14px;margin-bottom:13px;border:1px solid #1f2937}
+.chart-tabs{display:flex;gap:4px;margin-bottom:12px;background:#0a0f1a;border-radius:8px;padding:3px}
+.ctab{flex:1;background:transparent;border:none;border-radius:6px;padding:7px 0;color:#6b7280;font-size:12px;font-weight:700;cursor:pointer;transition:all .2s}
+.ctab.active{background:#1f2937;color:#f1f5f9}
+.chart-wrap{position:relative;height:280px;border-radius:8px;overflow:hidden}
+.chart-overlay{position:absolute;top:8px;left:10px;z-index:10;display:flex;flex-direction:column;gap:4px;pointer-events:none}
+.chart-price{font-size:18px;font-weight:800;color:#f1f5f9}
+.chart-chg{font-size:12px;font-weight:700}
+.chart-tf{display:flex;gap:4px;margin-bottom:8px}
+.tftab{background:#0a0f1a;border:1px solid #374151;border-radius:5px;padding:3px 9px;color:#6b7280;font-size:11px;font-weight:700;cursor:pointer}
+.tftab.active{border-color:#f97316;color:#f97316}
+.chart-loading{display:flex;align-items:center;justify-content:center;height:280px;color:#4b5563;font-size:13px}
+
+
 .ctag{background:#1f2937;border:1px solid #f9731633;border-radius:20px;color:#f97316;font-size:11px;font-weight:700;padding:4px 10px;cursor:pointer;transition:all .2s}
 .ctag:hover,.ctag.active{background:#f9731622;border-color:#f97316;color:#fff}
 .nimp{font-size:10px;font-weight:700;padding:1px 6px;border-radius:4px;display:inline-block;margin-top:3px}
@@ -216,6 +230,33 @@ input{width:100%;background:#0a0f1a;border:1px solid #374151;border-radius:8px;c
     <span class="tbadge" style="color:#4ade80;border-color:#4ade8044;background:#4ade8011">3:00–4:00 PM ✅ Closing Drive</span>
   </div>
   <div id="windowStatus" style="color:#9ca3af;font-size:12px;margin-top:10px">--</div>
+</div>
+
+
+<!-- Charts -->
+<div class="chart-section">
+  <div class="mrow" style="margin-bottom:10px">
+    <span class="slbl" style="margin-bottom:0">📈 LIVE CHARTS — TradingView</span>
+    <span style="color:#4ade80;font-size:10px;font-weight:700">● REAL-TIME</span>
+  </div>
+  <div class="chart-tabs">
+    <button class="ctab active" onclick="switchTV('SPY',this)">SPY</button>
+    <button class="ctab" onclick="switchTV('QQQ',this)">QQQ</button>
+    <button class="ctab" onclick="switchTV('CBOE:VIX',this)">VIX</button>
+    <button class="ctab" onclick="switchTV('IWM',this)">IWM</button>
+    <button class="ctab" onclick="switchTV('SPX',this)">SPX</button>
+  </div>
+  <div class="chart-tf">
+    <button class="tftab active" onclick="switchTVTF('1',this)">1m</button>
+    <button class="tftab" onclick="switchTVTF('5',this)">5m</button>
+    <button class="tftab" onclick="switchTVTF('15',this)">15m</button>
+    <button class="tftab" onclick="switchTVTF('60',this)">1H</button>
+    <button class="tftab" onclick="switchTVTF('D',this)">1D</button>
+  </div>
+  <div id="tvChartContainer" style="border-radius:8px;overflow:hidden;height:400px">
+    <div class="chart-loading" id="chartLoading"><span class="sp"></span>&nbsp;Loading chart...</div>
+  </div>
+  <div style="color:#4b5563;font-size:10px;margin-top:6px;text-align:right">Powered by TradingView · Free · No key needed</div>
 </div>
 
 <!-- Catalyst Checklist -->
@@ -726,26 +767,93 @@ async function loadEconomicCalendar() {
 // ─── News Feed ────────────────────────────────────────────────────
 let newsItems = [];
 async function loadNews() {
-  document.getElementById('newsBox').innerHTML = '<div style="color:#4b5563;font-size:12px"><span class="sp"></span>Loading...</div>';
-  try {
-    const url = 'https://feeds.finance.yahoo.com/rss/2.0/headline?s=SPY,QQQ,%5EVIX,NVDA,AAPL,MSFT&region=US&lang=en-US';
-    const r = await fetch('https://api.allorigins.win/get?url=' + encodeURIComponent(url));
-    if (!r.ok) throw new Error('proxy');
-    const o = await r.json();
-    const xml = new DOMParser().parseFromString(o.contents, 'text/xml');
-    const items = xml.querySelectorAll('item');
-    newsItems = [];
-    items.forEach((it, i) => {
-      if (i >= 10) return;
-      const t = it.querySelector('title')?.textContent || '';
-      const d = it.querySelector('pubDate')?.textContent || '';
-      const desc = it.querySelector('description')?.textContent?.replace(/<[^>]*>/g,'').slice(0,120) || '';
-      const analysis = analyzeNews(t, desc); newsItems.push({ t, d, desc, imp: analysis.dir, analysis });
-    });
-    renderNews();
-  } catch(e) {
-    document.getElementById('newsBox').innerHTML = '<div style="color:#6b7280;font-size:12px">News proxy unavailable. Use catalyst tags above or paste a headline into chat.</div>';
+  document.getElementById('newsBox').innerHTML = '<div style="color:#4b5563;font-size:12px"><span class="sp"></span>Loading news...</div>';
+
+  // Try Finnhub news first (works from GitHub Pages, no CORS issues)
+  const fhKey = document.getElementById('finnhubKey').value.trim();
+  if (fhKey) {
+    try {
+      const r = await fetch(`https://finnhub.io/api/v1/news?category=general&token=${fhKey}`);
+      if (r.ok) {
+        const data = await r.json();
+        const filtered = data.filter(n => n.headline && n.headline.length > 10).slice(0, 10);
+        if (filtered.length > 0) {
+          newsItems = [];
+          filtered.forEach(n => {
+            const t = n.headline || '';
+            const desc = n.summary || '';
+            const d = new Date(n.datetime * 1000).toUTCString();
+            const analysis = analyzeNews(t, desc);
+            newsItems.push({ t, d, desc, imp: analysis.dir, analysis });
+          });
+          renderNews();
+          return;
+        }
+      }
+    } catch(e) {}
   }
+
+  // Try multiple RSS proxies in sequence
+  const rssUrl = 'https://feeds.finance.yahoo.com/rss/2.0/headline?s=SPY,QQQ,NVDA,AAPL,MSFT&region=US&lang=en-US';
+  const proxies = [
+    'https://api.allorigins.win/get?url=',
+    'https://api.codetabs.com/v1/proxy?quest=',
+    'https://corsproxy.io/?',
+  ];
+
+  for (const proxy of proxies) {
+    try {
+      const isGet = proxy.includes('allorigins') || proxy.includes('codetabs');
+      const fetchUrl = isGet ? proxy + encodeURIComponent(rssUrl) : proxy + rssUrl;
+      const r = await fetch(fetchUrl, { signal: AbortSignal.timeout(5000) });
+      if (!r.ok) continue;
+
+      let xmlText;
+      if (proxy.includes('allorigins')) {
+        const o = await r.json();
+        xmlText = o.contents;
+      } else {
+        xmlText = await r.text();
+      }
+
+      const xml = new DOMParser().parseFromString(xmlText, 'text/xml');
+      const items = xml.querySelectorAll('item');
+      if (!items.length) continue;
+
+      newsItems = [];
+      items.forEach((it, i) => {
+        if (i >= 10) return;
+        const t = it.querySelector('title')?.textContent || '';
+        const d = it.querySelector('pubDate')?.textContent || '';
+        const desc = it.querySelector('description')?.textContent?.replace(/<[^>]*>/g,'').slice(0,120) || '';
+        const analysis = analyzeNews(t, desc);
+        newsItems.push({ t, d, desc, imp: analysis.dir, analysis });
+      });
+      renderNews();
+      return;
+    } catch(e) { continue; }
+  }
+
+  // All proxies failed — show curated static catalyst news as fallback
+  showStaticCatalysts();
+}
+
+function showStaticCatalysts() {
+  const staticNews = [
+    { t: 'Federal Reserve holds rates steady, signals data-dependent path forward', desc: 'Fed keeps benchmark rate unchanged', imp: 'neu' },
+    { t: 'S&P 500 futures point to flat open ahead of key inflation data', desc: 'Markets await CPI print', imp: 'neu' },
+    { t: 'Tech stocks lead gains as AI spending outlook remains strong', desc: 'Nvidia, Microsoft lead rally', imp: 'bull' },
+    { t: 'VIX elevated as traders hedge ahead of economic data releases', desc: 'Options activity surges', imp: 'bear' },
+    { t: 'Treasury yields rise on strong jobs data, pressuring growth stocks', desc: 'Rate-sensitive sectors under pressure', imp: 'bear' },
+  ];
+  newsItems = staticNews.map(n => {
+    const analysis = analyzeNews(n.t, n.desc);
+    return { t: n.t, d: new Date().toUTCString(), desc: n.desc, imp: analysis.dir, analysis };
+  });
+  renderNews();
+  // Add note that this is static
+  const box = document.getElementById('newsBox');
+  box.innerHTML = '<div style="color:#f59e0b;font-size:11px;margin-bottom:8px">⚠️ Live feed unavailable — showing example catalysts. Add Finnhub key for real news.</div>' + box.innerHTML;
 }
 
 // Significance scoring: returns {dir, strength, reason, scalp}
@@ -856,10 +964,102 @@ function newsToChat(headline, dir, strength, reason, scalp) {
   document.getElementById('qin').scrollIntoView({ behavior: 'smooth' });
 }
 
+
+// ─── TradingView Charts ───────────────────────────────────────────
+let tvSym = 'SPY';
+let tvTF = '1';
+
+function buildTVWidget(sym, tf) {
+  if (!window.TradingView) {
+    loadTVScript(() => buildTVWidget(sym, tf));
+    return;
+  }
+  const container = document.getElementById('tvChartContainer');
+  container.innerHTML = '';
+  const div = document.createElement('div');
+  div.id = 'tv_widget';
+  div.style.height = '400px';
+  container.appendChild(div);
+
+  new TradingView.widget({
+    container_id: 'tv_widget',
+    symbol: sym,
+    interval: tf,
+    timezone: 'America/New_York',
+    theme: 'dark',
+    style: '1',           // candlesticks
+    locale: 'en',
+    toolbar_bg: '#0a0f1a',
+    enable_publishing: false,
+    hide_top_toolbar: false,
+    hide_legend: false,
+    save_image: false,
+    backgroundColor: '#0a0f1a',
+    gridColor: '#1f2937',
+    studies: [
+      'VWAP@tv-basicstudies',
+      'Volume@tv-basicstudies',
+      'RSI@tv-basicstudies',
+    ],
+    width: '100%',
+    height: 400,
+    autosize: true,
+    withdateranges: false,
+    hide_side_toolbar: true,
+    allow_symbol_change: false,
+    show_popup_button: false,
+  });
+}
+
+function switchTV(sym, btn) {
+  document.querySelectorAll('.ctab').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  tvSym = sym;
+  buildTVWidget(tvSym, tvTF);
+}
+
+function switchTVTF(tf, btn) {
+  document.querySelectorAll('.tftab').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  tvTF = tf;
+  buildTVWidget(tvSym, tvTF);
+}
+
+function loadTVScript(cb) {
+  if (window.TradingView) { cb(); return; }
+  // Check if script already loading
+  if (document.getElementById('tv-script')) {
+    const wait = setInterval(() => {
+      if (window.TradingView) { clearInterval(wait); cb(); }
+    }, 100);
+    return;
+  }
+  const s = document.createElement('script');
+  s.id = 'tv-script';
+  s.src = 'https://s3.tradingview.com/tv.js';
+  s.async = true;
+  s.onload = () => {
+    // Give TV a moment to initialize its namespace
+    setTimeout(cb, 200);
+  };
+  s.onerror = () => {
+    document.getElementById('tvChartContainer').innerHTML =
+      '<div style="display:flex;align-items:center;justify-content:center;height:400px;color:#6b7280;font-size:13px;flex-direction:column;gap:10px">' +
+      '<span>⚠️ TradingView failed to load</span>' +
+      '<a href="https://www.tradingview.com/chart/?symbol=SPY" target="_blank" style="color:#60a5fa;font-size:12px">Open TradingView in new tab →</a>' +
+      '</div>';
+  };
+  document.head.appendChild(s);
+}
+
 // ─── Init ────────────────────────────────────────────────────────
 loadKeys();
 loadPrices();
 loadNews();
+// Load TradingView after page fully ready
+window.addEventListener('load', () => {
+  loadTVScript(() => buildTVWidget('SPY', '1'));
+});
 loadEconomicCalendar();
 setInterval(loadPrices,60000);
 setInterval(loadNews,180000);
